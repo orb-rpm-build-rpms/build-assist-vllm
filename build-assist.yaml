@@ -29,7 +29,8 @@
 # F44 base too OLD for vLLM -- these must be rebuilt from newer branches
 # (added under the dist-git section below as they are prepared):
 #   * torch 2.9.1        -> need ==2.12.0 (compressed-tensors needs >=2.10);
-#                           very large build, offloaded/deferred.
+#                           very large build, built on a dedicated server
+#                           (python-torch:release-2.12, from f45's 2.12.0).
 #   * protobuf 3.19.6    -> need >=5.29.6 (major ABI jump; affects grpcio).
 #   * starlette 0.52.1   -> need >=1.0.1.
 #   * tokenizers 0.22.2  -> transformers 5.16.1 needs >=0.23.1,<0.24.0.
@@ -68,11 +69,16 @@ build:
       #    packages still use Fedora's crates via the cargo buildrequires
       #    generator; if F44's crate versions don't satisfy them they'll need
       #    the vendoring treatment (rust-sources.sh), like llguidance below.
-      #    (torch 2.9.1 and protobuf 3.19.6 are the other too-old base libs
-      #    but are heavy/cascading and deferred -- see the blocker notes.)
+      #    torch (2.9.1 -> 2.12.0) is the same too-old-base case and is included
+      #    below; protobuf 3.19.6 is the remaining deferred one (see blockers).
       - python-safetensors:release-0.8    # F44 has 0.7.0; transformers needs >=0.8.0
       - python-tokenizers:release-0.23    # F44 has 0.22.2; transformers needs >=0.23.1,<0.24.0
       - python-starlette:release-1.6      # F44 has 0.52.1; vLLM needs >=1.0.1 (fastapi 0.136 allows >=0.46)
+      # torch: F44 has 2.9.1; vLLM pins ==2.12.0 and compressed-tensors needs
+      #   >=2.10.0. f45 ships 2.12.0 (protobuf feature off, so no protobuf 6.x
+      #   bump needed -- F44's 3.19.6 suffices). Very large native build; per the
+      #   plan it is built on a dedicated server and imported into the localrepo.
+      - python-torch:release-2.12         # F44 has 2.9.1; compressed-tensors needs >=2.10.0 (vLLM pins ==2.12.0)
 
       # -- simple / few deps --
       - python-partial-json-parser:main
@@ -175,11 +181,10 @@ build:
       #   cascade. Clone rpms/protobuf, branch at 6.33.5.
       # - protobuf:release-6.33
       #
-      # torch: vLLM pins ==2.12.0 and compressed-tensors needs >=2.10.0, but
-      #   F44 ships only 2.9.1 (no newer build). F45/rawhide has 2.12.0. This is
-      #   a very large native build; per plan it will be built on a dedicated
-      #   server and imported into the localrepo, so it is deferred here.
-      # - python-torch:release-2.12
+      # torch: NOW ENABLED above (python-torch:release-2.12). Was deferred as a
+      #   very large native build; it is the compressed-tensors blocker
+      #   (needs >=2.10.0) so it has been added to the queue to be built on a
+      #   dedicated server and imported into the localrepo.
       #
       # fastapi: SATISFIED by the F44 base (0.136.3, within vLLM's
       #   >=0.133,<0.137). It was a blocker only on F45, which shipped 0.141.1
