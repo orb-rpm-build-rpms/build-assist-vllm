@@ -1,0 +1,140 @@
+# Build manifest for packaging vLLM (ROCm) for Fedora.
+#
+# Base is fedora-45-x86_64. Anything already present at a sufficient version
+# in the f45 base repos is NOT listed here (mock pulls it automatically).
+# Only packages that must be built are listed:
+#   * Fedora dist-git, non-default branch  -> version bump available upstream
+#   * vllm-packages (local dist-git)       -> not in Fedora, or needs a
+#                                             version Fedora doesn't ship yet
+#
+# Requirements analysed from the vLLM checkout at vllm/ :
+#   requirements/common.txt, requirements/rocm.txt, requirements/build/rocm.txt
+#
+# Satisfied by the f45 base (no build needed), for reference:
+#   torch 2.12.0, torchvision 0.27.1, torchaudio 2.11.0, triton 3.7.0,
+#   numpy, regex, cachetools, psutil, sentencepiece, requests, tqdm,
+#   py-cpuinfo, tokenizers, safetensors, protobuf (6.33.5), starlette,
+#   aiohttp, openai, pydantic, prometheus_client, pillow, tiktoken, lark,
+#   typing_extensions, filelock, jsonschema, pyzmq, msgspec, pyyaml, six,
+#   einops, cloudpickle, watchfiles, python-json-logger, ninja, cbor2, ijson,
+#   setproctitle, anthropic (0.87.0), opentelemetry-api, datasets,
+#   pytest-asyncio, packaging (26.2), setuptools-scm, setuptools-rust, wheel,
+#   jinja2, cmake, amdsmi (ROCm)
+# Caveats for the vLLM .spec (base packages, but non-obvious names/versions):
+#   * opencv-python-headless -> depend on python3-opencv (4.13.0, provides cv2)
+#   * setuptools <81 pin      -> use python3-setuptools80 (default is 83.0.0)
+
+base: fedora-45-x86_64
+localrepo: /home/gmessmer/git/vllm-build/vllm-result/
+
+build:
+  # ---- Already in Fedora, but the f45 version is too old: build a newer
+  #      branch straight from Fedora dist-git. --------------------------------
+  - type: dist-git
+    url: https://src.fedoraproject.org/rpms/
+    packages:
+      # huggingface_hub: need >=1.28.0; f45 has 1.27.0, rawhide has 1.30.0.
+      - python-huggingface-hub:rawhide
+
+      # Build deps that were needed to build anthropic locally.
+      - python-hatchling:main
+      - python-jaraco-path:main
+
+  # ---- Not packaged in Fedora (or Fedora's version is too old for any
+  #      branch): build from freshly generated specs in vllm-packages.
+  #      Ordered leaves-first for dependency resolution. Specs still need to
+  #      be created (pyp2spec) and committed before these will build. --------
+  - type: dist-git
+    url: /home/gmessmer/git/vllm-build/vllm-packages/
+    packages:
+      # -- simple / few deps --
+      - python-partial-json-parser:main
+      - python-pybase64:main
+      - python-blake3:main
+      - python-astor:main        # dependency of depyf; not packaged in Fedora
+      - python-depyf:main
+      - python-openai-harmony:main
+      - python-interegular:main   # dependency of lm-format-enforcer; not in Fedora
+      - python-lm-format-enforcer:main
+
+      # -- outlines-core: pins pyo3 0.27, hf-hub 0.4.1 and tokenizers 0.22.2 --
+      #    all present in f45 only at other versions (0.29.2 / 0.4.3 / 0.23.1).
+      #    Like python-llguidance, it vendors its whole Rust crate graph and
+      #    builds it offline (python-outlines-core/rust-sources.sh runs
+      #    `cargo vendor` at build time), so none of those crates need a Fedora
+      #    package -- no pyo3-0.27 / hf-hub-0.4.1 / tokenizers-0.22.2 builds.
+      - python-outlines-core:main
+
+      # -- llguidance: its Rust crate graph needs pyo3 0.28, tokenizers 0.21, and
+      #    four crates Fedora doesn't package at all (derivre, jsonschema,
+      #    referencing, tiktoken-rs). Packaging each -- even via release branches
+      #    -- would be a large cascade, so this package instead vendors its whole
+      #    Rust dependency tree and builds it offline. The vendor tarball is not
+      #    kept in a lookaside cache: python-llguidance/rust-sources.sh runs
+      #    `cargo vendor` at build time to regenerate it. No pyo3-0.28 or
+      #    tokenizers-0.21 Fedora packages are required as a result.
+      - python-llguidance:main
+      - python-model-hosting-container-standards:main
+      - python-prometheus-fastapi-instrumentator:main
+
+      # -- setuptools_scm 8.2.0: compressed-tensors' build-system.requires hard-
+      #    pins setuptools_scm==8.2.0, but f45 ships 10.2.1. This is the reverse
+      #    of the "need something newer" case -- the build needs an OLDER version
+      #    than the base. Fedora's own dist-git checked out at the 8.2.0 commit
+      #    on a release-8.2 branch supplies it, demonstrating that the
+      #    upstream-following branch strategy handles upper-bounded build deps
+      #    just as cleanly. Built before its consumer (leaves-first).
+      - python-setuptools_scm:release-8.2
+      # transformers is built before compressed-tensors: compressed_tensors
+      # imports transformers at module top level and requires >=4.45 at build
+      # time (its %check import), and f45 ships no transformers at all. 5.16.1
+      # satisfies both that and vLLM's >=5.10.4. Its own core pins are met by the
+      # base/localrepo (tokenizers 0.23.1, huggingface_hub 1.30.0, safetensors
+      # 0.8.0), so it needs no further release branches.
+      - python-transformers:main
+      - python-compressed-tensors:main
+      - python-mistral-common:main
+
+      # -- opentelemetry stack (exporter-otlp depends on sdk) --
+      - python-opentelemetry-semantic-conventions-ai:main
+      - python-opentelemetry-sdk:main
+      - python-opentelemetry-exporter-otlp:main
+
+      # -- newer than any Fedora branch ships --
+      # mcp: need >=2.0.0,<3.0.0; Fedora (incl. rawhide) has only 1.27.1.
+      - python-mcp:main
+
+      # -- heavier builds (native/large dep trees) --
+      - python-xgrammar:main
+      - python-peft:main
+      - python-timm:main
+      - python-tensorizer:main
+      - python-fastsafetensors:main
+      - python-conch-triton-kernels:main
+      - python-numba:main
+      - python-tilelang:main
+      - python-apache-tvm-ffi:main
+
+      # -- KNOWN BLOCKERS: left out until resolved --
+      #
+      # runai-model-streamer, amd-quark, mooncake-transfer-engine-rocm:
+      #   wheel-only on PyPI (no sdist at the required version), so pyp2spec
+      #   cannot generate a source-buildable spec. Each needs a hand-written
+      #   spec built from its upstream git (type: git) instead:
+      #     runai-model-streamer      -> github.com/run-ai/runai-model-streamer
+      #     amd-quark (0.12.post1)    -> github.com/amd/quark  (sdist only for 0.1.0)
+      #     mooncake-transfer-engine  -> github.com/kvcache-ai/Mooncake (C++/RDMA)
+      # - python-runai-model-streamer:main
+      # - python-amd-quark:main
+      # - python-mooncake-transfer-engine-rocm:main
+      #
+      # grpcio / grpcio-reflection: vLLM pins ==1.78.0, Fedora ships 1.48.4
+      #   (all branches). A jump this large is a substantial rebuild.
+      # - python-grpcio:main
+      # - python-grpcio-reflection:main
+      #
+      # fastapi: vLLM requires <0.137.0, but the f45 base already has 0.141.1
+      #   (and rawhide is newer still). This is a DOWNGRADE relative to base,
+      #   so it can't simply be built newer -- either build/pin an older
+      #   fastapi here or relax vLLM's upper bound.
+      # - python-fastapi:main
