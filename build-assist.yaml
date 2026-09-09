@@ -1,30 +1,42 @@
 # Build manifest for packaging vLLM (ROCm) for Fedora.
 #
-# Base is fedora-45-x86_64. Anything already present at a sufficient version
-# in the f45 base repos is NOT listed here (mock pulls it automatically).
-# Only packages that must be built are listed:
+# Base is fedora-44-x86_64. F44 (not F45) because vLLM requires Python
+# >=3.10,<3.15: F44 ships Python 3.14, F45 ships 3.15 (which also breaks
+# torch.compile). Anything already present at a sufficient version in the f44
+# base repos is NOT listed here (mock pulls it automatically). Only packages
+# that must be built are listed:
 #   * Fedora dist-git, non-default branch  -> version bump available upstream
-#   * vllm-packages (local dist-git)       -> not in Fedora, or needs a
-#                                             version Fedora doesn't ship yet
+#   * vllm-packages (local dist-git)       -> not in Fedora, or a version
+#                                             Fedora doesn't ship yet; capped
+#                                             deps track a release-X.Y branch
+#                                             (see below) instead of main.
 #
 # Requirements analysed from the vLLM checkout at vllm/ :
 #   requirements/common.txt, requirements/rocm.txt, requirements/build/rocm.txt
 #
-# Satisfied by the f45 base (no build needed), for reference:
-#   torch 2.12.0, torchvision 0.27.1, torchaudio 2.11.0, triton 3.7.0,
+# Satisfied by the f44 base (no build needed), for reference:
 #   numpy, regex, cachetools, psutil, sentencepiece, requests, tqdm,
-#   py-cpuinfo, tokenizers, safetensors, protobuf (6.33.5), starlette,
-#   aiohttp, openai, pydantic, prometheus_client, pillow, tiktoken, lark,
-#   typing_extensions, filelock, jsonschema, pyzmq, msgspec, pyyaml, six,
-#   einops, cloudpickle, watchfiles, python-json-logger, ninja, cbor2, ijson,
-#   setproctitle, anthropic (0.87.0), opentelemetry-api, datasets,
-#   pytest-asyncio, packaging (26.2), setuptools-scm, setuptools-rust, wheel,
-#   jinja2, cmake, amdsmi (ROCm)
+#   py-cpuinfo, aiohttp, openai (2.24.0), pydantic (2.12.5), prometheus_client,
+#   pillow, tiktoken, lark (1.2.2), typing_extensions, filelock, jsonschema,
+#   pyzmq, msgspec, pyyaml, six, einops, cloudpickle, watchfiles,
+#   python-json-logger, ninja, cbor2, ijson, setproctitle, anthropic,
+#   opentelemetry-api, datasets, pytest-asyncio, packaging, setuptools-rust,
+#   wheel, jinja2, cmake, amdsmi (ROCm), fastapi (0.136.3, in vLLM's <0.137)
 # Caveats for the vLLM .spec (base packages, but non-obvious names/versions):
 #   * opencv-python-headless -> depend on python3-opencv (4.13.0, provides cv2)
-#   * setuptools <81 pin      -> use python3-setuptools80 (default is 83.0.0)
+#   * setuptools <80 pin      -> use python3-setuptools80 (f44 default is 80.10.2)
+#
+# F44 base too OLD for vLLM -- these must be rebuilt from newer branches
+# (added under the dist-git section below as they are prepared):
+#   * torch 2.9.1        -> need ==2.12.0 (compressed-tensors needs >=2.10);
+#                           very large build, offloaded/deferred.
+#   * protobuf 3.19.6    -> need >=5.29.6 (major ABI jump; affects grpcio).
+#   * starlette 0.52.1   -> need >=1.0.1.
+#   * tokenizers 0.22.2  -> transformers 5.16.1 needs >=0.23.1,<0.24.0.
+#   * safetensors 0.7.0  -> transformers 5.16.1 needs >=0.8.0.
+#   * huggingface_hub, transformers, peft: absent from f44 (built below).
 
-base: fedora-45-x86_64
+base: fedora-44-x86_64
 localrepo: /home/gmessmer/git/vllm-build/vllm-result/
 
 build:
@@ -47,15 +59,32 @@ build:
   - type: dist-git
     url: /home/gmessmer/git/vllm-build/vllm-packages/
     packages:
+      # -- F44 base too old: rebuilt from a newer Fedora branch. These are
+      #    Fedora dist-git packages cloned into vllm-packages and pinned to a
+      #    release-X.Y branch (created at the rawhide/f45 commit that carries
+      #    the needed version). F44 ships them below what vLLM/transformers
+      #    require. tokenizers is itself capped (<0.24.0 by transformers), so
+      #    its branch tracks the 0.23 line rather than rawhide. Both Rust
+      #    packages still use Fedora's crates via the cargo buildrequires
+      #    generator; if F44's crate versions don't satisfy them they'll need
+      #    the vendoring treatment (rust-sources.sh), like llguidance below.
+      #    (torch 2.9.1 and protobuf 3.19.6 are the other too-old base libs
+      #    but are heavy/cascading and deferred -- see the blocker notes.)
+      - python-safetensors:release-0.8    # F44 has 0.7.0; transformers needs >=0.8.0
+      - python-tokenizers:release-0.23    # F44 has 0.22.2; transformers needs >=0.23.1,<0.24.0
+      - python-starlette:release-1.6      # F44 has 0.52.1; vLLM needs >=1.0.1 (fastapi 0.136 allows >=0.46)
+
       # -- simple / few deps --
       - python-partial-json-parser:main
       - python-pybase64:main
       - python-blake3:main
       - python-astor:main        # dependency of depyf; not packaged in Fedora
-      - python-depyf:main
+      - python-depyf:release-0.20   # vLLM pins depyf ==0.20.0 (exact)
       - python-openai-harmony:main
       - python-interegular:main   # dependency of lm-format-enforcer; not in Fedora
-      - python-lm-format-enforcer:main
+      # vLLM pins lm-format-enforcer ==0.11.3 (exact), so it tracks a release
+      # branch rather than main to make the pinned-not-latest choice explicit.
+      - python-lm-format-enforcer:release-0.11
 
       # -- outlines-core: pins pyo3 0.27, hf-hub 0.4.1 and tokenizers 0.22.2 --
       #    all present in f45 only at other versions (0.29.2 / 0.4.3 / 0.23.1).
@@ -63,7 +92,7 @@ build:
       #    builds it offline (python-outlines-core/rust-sources.sh runs
       #    `cargo vendor` at build time), so none of those crates need a Fedora
       #    package -- no pyo3-0.27 / hf-hub-0.4.1 / tokenizers-0.22.2 builds.
-      - python-outlines-core:main
+      - python-outlines-core:release-0.2   # vLLM pins outlines_core ==0.2.14
 
       # -- llguidance: its Rust crate graph needs pyo3 0.28, tokenizers 0.21, and
       #    four crates Fedora doesn't package at all (derivre, jsonschema,
@@ -73,8 +102,8 @@ build:
       #    kept in a lookaside cache: python-llguidance/rust-sources.sh runs
       #    `cargo vendor` at build time to regenerate it. No pyo3-0.28 or
       #    tokenizers-0.21 Fedora packages are required as a result.
-      - python-llguidance:main
-      - python-model-hosting-container-standards:main
+      - python-llguidance:release-1.7   # vLLM pins llguidance >=1.7.0,<1.8.0 (latest 1.8.0 is excluded)
+      - python-model-hosting-container-standards:release-0.1   # vLLM pins >=0.1.14,<1.0.0
       - python-prometheus-fastapi-instrumentator:main
 
       # -- setuptools_scm 8.2.0: compressed-tensors' build-system.requires hard-
@@ -92,7 +121,7 @@ build:
       # base/localrepo (tokenizers 0.23.1, huggingface_hub 1.30.0, safetensors
       # 0.8.0), so it needs no further release branches.
       - python-transformers:main
-      - python-compressed-tensors:main
+      - python-compressed-tensors:release-0.17   # vLLM pins compressed-tensors ==0.17.0 (latest 0.18.0)
       - python-mistral-common:main
 
       # -- opentelemetry stack (exporter-otlp depends on sdk) --
@@ -102,18 +131,18 @@ build:
 
       # -- newer than any Fedora branch ships --
       # mcp: need >=2.0.0,<3.0.0; Fedora (incl. rawhide) has only 1.27.1.
-      - python-mcp:main
+      - python-mcp:release-2.1   # vLLM pins mcp >=2.0.0,<3.0.0 (latest 2.2.0)
 
       # -- heavier builds (native/large dep trees) --
-      - python-xgrammar:main
+      - python-xgrammar:release-0.2   # vLLM pins xgrammar >=0.2.1,<1.0.0 (latest 0.2.6)
       - python-peft:main
       - python-timm:main
-      - python-tensorizer:main
+      - python-tensorizer:release-2.10   # vLLM pins tensorizer ==2.10.1 (latest 2.12.1)
       - python-fastsafetensors:main
-      - python-conch-triton-kernels:main
-      - python-numba:main
-      - python-tilelang:main
-      - python-apache-tvm-ffi:main
+      - python-conch-triton-kernels:release-1.2   # vLLM pins conch-triton-kernels ==1.2.1 (latest 1.3)
+      - python-numba:release-0.65   # vLLM (rocm) pins numba ==0.65.0 (latest 0.67.0)
+      - python-tilelang:release-0.1   # vLLM pins tilelang ==0.1.10 (latest 0.1.14)
+      - python-apache-tvm-ffi:release-0.1   # vLLM pins apache-tvm-ffi ==0.1.10 (latest 0.1.13.post3)
 
       # -- KNOWN BLOCKERS: left out until resolved --
       #
@@ -129,12 +158,29 @@ build:
       # - python-mooncake-transfer-engine-rocm:main
       #
       # grpcio / grpcio-reflection: vLLM pins ==1.78.0, Fedora ships 1.48.4
-      #   (all branches). A jump this large is a substantial rebuild.
+      #   (all branches). A jump this large is a substantial rebuild, and it is
+      #   tied to the protobuf bump below (grpcio 1.78 needs protobuf >=5).
       # - python-grpcio:main
       # - python-grpcio-reflection:main
       #
-      # fastapi: vLLM requires <0.137.0, but the f45 base already has 0.141.1
-      #   (and rawhide is newer still). This is a DOWNGRADE relative to base,
-      #   so it can't simply be built newer -- either build/pin an older
-      #   fastapi here or relax vLLM's upper bound.
-      # - python-fastapi:main
+      # protobuf: vLLM needs >=5.29.6, but F44 ships 3.19.6. F45/rawhide has
+      #   6.33.5. Deferred only because nothing in the queue above needs it yet
+      #   (transformers touches protobuf solely via the optional
+      #   sentencepiece_model_pb2 module, skipped in %check); it is first needed
+      #   by grpcio and vLLM itself. Its ~38 F44 reverse-deps are IRRELEVANT --
+      #   this is a private localrepo, so we never break unrelated F44 packages;
+      #   only vLLM's subtree resolves against our build. The only real cost is
+      #   protobuf's own build dep abseil-cpp (F44 20260107.1 vs F45 20260526.0,
+      #   same-year snapshots) -- worst case one extra abseil rebuild, not a
+      #   cascade. Clone rpms/protobuf, branch at 6.33.5.
+      # - protobuf:release-6.33
+      #
+      # torch: vLLM pins ==2.12.0 and compressed-tensors needs >=2.10.0, but
+      #   F44 ships only 2.9.1 (no newer build). F45/rawhide has 2.12.0. This is
+      #   a very large native build; per plan it will be built on a dedicated
+      #   server and imported into the localrepo, so it is deferred here.
+      # - python-torch:release-2.12
+      #
+      # fastapi: SATISFIED by the F44 base (0.136.3, within vLLM's
+      #   >=0.133,<0.137). It was a blocker only on F45, which shipped 0.141.1
+      #   (too new). No build needed on F44.
