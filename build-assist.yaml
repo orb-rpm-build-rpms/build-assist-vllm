@@ -30,7 +30,14 @@
 # (added under the dist-git section below as they are prepared):
 #   * torch 2.9.1        -> need ==2.12.0 (compressed-tensors needs >=2.10);
 #                           very large build, built on a dedicated server
-#                           (python-torch:release-2.12, from f45's 2.12.0).
+#                           (python-torch:release-2.12, from f45's 2.12.0). The
+#                           ROCm build also drags in two more too-old base bits:
+#                           cpuinfo (below) and ROCm itself (F44 7.1.1 vs the
+#                           7.2.2 torch 2.12 wants; worked around in the spec by
+#                           force-including <chrono>/<format> so 7.1.1's
+#                           host_defines.h cannot poison GCC 16's <format>).
+#   * cpuinfo 24.09      -> torch 2.12 calls cpuinfo_has_x86_avx10_1()/_2();
+#                           needs f45's 25.11 (built as cpuinfo:f45 above).
 #   * protobuf 3.19.6    -> need >=5.29.6 (major ABI jump; affects grpcio).
 #   * starlette 0.52.1   -> need >=1.0.1.
 #   * tokenizers 0.22.2  -> transformers 5.16.1 needs >=0.23.1,<0.24.0.
@@ -48,6 +55,13 @@ build:
     packages:
       # huggingface_hub: need >=1.28.0; f45 has 1.27.0, rawhide has 1.30.0.
       - python-huggingface-hub:rawhide
+
+      # cpuinfo: torch 2.12 calls cpuinfo_has_x86_avx10_1()/_2(), added upstream
+      # after F44's 24.09 snapshot; f45 ships 25.11 which has them. torch builds
+      # with USE_SYSTEM_CPUINFO=ON, so the newer system library is needed (it
+      # fails to compile aten/src/ATen/cpu/Utils.cpp otherwise). Built before
+      # python-torch (this dist-git group runs before the vllm-packages group).
+      - cpuinfo:f45
 
       # Build deps that were needed to build anthropic locally.
       - python-hatchling:main
