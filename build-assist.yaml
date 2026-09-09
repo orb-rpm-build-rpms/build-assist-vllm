@@ -88,6 +88,14 @@ build:
       - python-safetensors:release-0.8    # F44 has 0.7.0; transformers needs >=0.8.0
       - python-tokenizers:release-0.23    # F44 has 0.22.2; transformers needs >=0.23.1,<0.24.0
       - python-starlette:release-1.6      # F44 has 0.52.1; vLLM needs >=1.0.1 (fastapi 0.136 allows >=0.46)
+      # xnnpack: exact BuildRequires of python-torch, and it links cpuinfo. The
+      #   cpuinfo:f45 bump above changes cpuinfo's fully-versioned soname
+      #   (libcpuinfo.so.24.09.26 -> .25.11.14), so the base xnnpack no longer
+      #   matches. Same upstream snapshot as the base (0.0^git20240814.312eb7e,
+      #   what torch pins), rebuilt against cpuinfo 25.11 with an empty commit
+      #   lifting the release to -6.fc44 so it outranks the base's -5.fc44. Built
+      #   before python-torch; cpuinfo:f45 is already in the localrepo (prior group).
+      - xnnpack:f44
       # torch: F44 has 2.9.1; vLLM pins ==2.12.0 and compressed-tensors needs
       #   >=2.10.0. f45 ships 2.12.0 (protobuf feature off, so no protobuf 6.x
       #   bump needed -- F44's 3.19.6 suffices). Very large native build; per the
