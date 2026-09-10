@@ -201,7 +201,10 @@ build:
       # typing-extensions + ninja + gcc, all in the base. 0.1.10 satisfies both
       # consumers and matches vLLM's pin.
       - python-apache-tvm-ffi:release-0.1   # vLLM pins apache-tvm-ffi ==0.1.10 (latest 0.1.13.post3)
-      - python-xgrammar:release-0.2   # vLLM pins xgrammar >=0.2.1,<1.0.0 (latest 0.2.6)
+      # xgrammar 0.2.1: vLLM's exact frozen pin. 0.2.5.post1 regressed a
+      # transformers <5 cap (clashing with transformers 5.16.1); 0.2.1 has no
+      # such cap. Needs apache-tvm-ffi (built just above).
+      - python-xgrammar:release-0.2   # vLLM pins xgrammar >=0.2.1,<1.0.0, frozen at 0.2.1
       - python-peft:main
       - python-timm:main
       - python-tensorizer:release-2.10   # vLLM pins tensorizer ==2.10.1 (latest 2.12.1)
