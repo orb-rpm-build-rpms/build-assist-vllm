@@ -58,6 +58,11 @@ build:
       # huggingface_hub: need >=1.28.0; f45 has 1.27.0, rawhide has 1.30.0.
       - python-huggingface-hub:rawhide
 
+      # click: httpx2 2.12.0's cli extra build-requires click >=8.4.2; F44 has
+      # 8.3.x. f45 ships 8.4.2. No Linux runtime deps (colorama is Windows-only),
+      # so no cascade. Built before httpx2.
+      - python-click:f45
+
       # httpx2: mcp 2.1.1 needs httpx2 >=2.5.0; F44 ships 2.3.0. f45 has 2.12.0
       # (exactly what vLLM's frozen test files pin). A single srpm produces BOTH
       # python3-httpx2 and python3-httpcore2, so this one build also bumps
