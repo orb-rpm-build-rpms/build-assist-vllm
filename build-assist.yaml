@@ -196,6 +196,11 @@ build:
       - python-mcp:release-2.1   # vLLM pins mcp >=2.0.0,<3.0.0 (latest 2.2.0)
 
       # -- heavier builds (native/large dep trees) --
+      # apache-tvm-ffi is a BUILD dep of both xgrammar (>=0.1.9) and tilelang
+      # (>=0.1.10,~=0.1.0), so it is built first. It is itself a leaf: only
+      # typing-extensions + ninja + gcc, all in the base. 0.1.10 satisfies both
+      # consumers and matches vLLM's pin.
+      - python-apache-tvm-ffi:release-0.1   # vLLM pins apache-tvm-ffi ==0.1.10 (latest 0.1.13.post3)
       - python-xgrammar:release-0.2   # vLLM pins xgrammar >=0.2.1,<1.0.0 (latest 0.2.6)
       - python-peft:main
       - python-timm:main
@@ -204,7 +209,6 @@ build:
       - python-conch-triton-kernels:release-1.2   # vLLM pins conch-triton-kernels ==1.2.1 (latest 1.3)
       - python-numba:release-0.65   # vLLM (rocm) pins numba ==0.65.0 (latest 0.67.0)
       - python-tilelang:release-0.1   # vLLM pins tilelang ==0.1.10 (latest 0.1.14)
-      - python-apache-tvm-ffi:release-0.1   # vLLM pins apache-tvm-ffi ==0.1.10 (latest 0.1.13.post3)
 
       # -- KNOWN BLOCKERS: left out until resolved --
       #
