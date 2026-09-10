@@ -117,6 +117,25 @@ build:
       #   plan it is built on a dedicated server and imported into the localrepo.
       - python-torch:release-2.12         # F44 has 2.9.1; compressed-tensors needs >=2.10.0 (vLLM pins ==2.12.0)
 
+      # -- torch companion packages (rebuilt against our torch 2.12). F44 ships
+      #    these built against its torch 2.9.x; the compiled ones link libtorch,
+      #    so our 2.12 bump ABI-breaks them (e.g. Fedora's torchvision 0.24.0
+      #    fails to import -- torchvision.extension can't load against 2.12,
+      #    which breaks timm's %check). Cloned from Fedora dist-git and pinned to
+      #    the f45 branch, whose versions are the ones Fedora itself built against
+      #    f45's torch 2.12.0 -- so they are the correct pairing (torchvision
+      #    0.24->0.27.1, torchaudio 2.9->2.11.0). Built after python-torch and
+      #    before python-timm (which needs torchvision). The compiled ones
+      #    (torchvision, torchaudio) are ROCm/HIP builds and may need torch's
+      #    ROCm-7.1.1/GCC-16 workaround on F44; the noarch ones (torchdata,
+      #    torchdiffeq, torchsde) don't link torch and just re-run against 2.12.
+      - python-torchvision:release-0.27   # F44 0.24.0 (torch 2.9); f45 0.27.1 pairs with torch 2.12; needed by timm
+      - python-torchaudio:release-2.11     # F44 2.9.0 (torch 2.9); f45 2.11.0 pairs with torch 2.12
+      - python-torchdata:release-0.11      # noarch; rebuilt for torch 2.12 coherence
+      - python-torchtext:release-0.17      # CPU C++ ext; f45 0.17.1 (torchtext is deprecated upstream)
+      - python-torchdiffeq:release-0.2     # noarch; rebuilt for torch 2.12 coherence
+      - python-torchsde:release-0.2        # noarch; rebuilt for torch 2.12 coherence
+
       # -- simple / few deps --
       # opencv-python-headless: name-bridge metapackage. Fedora's python3-opencv
       #   provides cv2 but advertises only python3dist(opencv), so PyPI-style
