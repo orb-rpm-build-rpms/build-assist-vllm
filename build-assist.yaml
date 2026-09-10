@@ -229,8 +229,28 @@ build:
       - python-tensorizer:release-2.10   # vLLM pins tensorizer ==2.10.1 (latest 2.12.1)
       - python-fastsafetensors:main
       - python-conch-triton-kernels:release-1.2   # vLLM pins conch-triton-kernels ==1.2.1 (latest 1.3)
+      - python-llvmlite:release-0.47   # numba 0.65.0 needs llvmlite >=0.47,<0.48 (F44 base has 0.46)
       - python-numba:release-0.65   # vLLM (rocm) pins numba ==0.65.0 (latest 0.67.0)
+      - python-ml-dtypes:main   # core tilelang dep; not in F44 base
       - python-tilelang:release-0.1   # vLLM pins tilelang ==0.1.10 (latest 0.1.14)
+
+      # -- protobuf: vLLM needs python protobuf >=5.29.6; F44 ships 3.19.6.
+      #    F45/rawhide has 6.33.5, but the layout changed: the Python bindings
+      #    were split out of the C++ srpm into a separate rpms/python-protobuf.
+      #    So two builds are needed, both cloned from Fedora dist-git:
+      #      * protobuf (C++, srpm Version 33.5 / version_cpp 6.33.5) provides
+      #        protobuf-devel = 6.33.5 AND upb-static (upb is not a separate
+      #        package -- protobuf-devel Provides it; utf8_range stays bundled).
+      #      * python-protobuf builds python3-protobuf 6.33.5, the actual vLLM
+      #        dep. It unbundles upb/utf8_range and build-requires protobuf-devel
+      #        = 6.33.5 + upb-static, so it must follow the C++ build.
+      #    The C++ branch is release-33 (its version line is 33.x); the Python
+      #    branch is release-6.33 (6.33.x). Only the C++ side risks an abseil
+      #    bump (F44 20260107.1 vs f45's 20260526.0); worst case one abseil
+      #    rebuild, not a cascade (private localrepo -- F44 rdeps are irrelevant).
+      #    Built before grpcio and vLLM (the consumers of python3-protobuf 6.x).
+      - protobuf:release-33          # C++ libs + protobuf-devel/upb-static 6.33.5
+      - python-protobuf:release-6.33   # python3-protobuf 6.33.5 (vLLM needs >=5.29.6)
 
       # -- KNOWN BLOCKERS: left out until resolved --
       #
@@ -246,8 +266,8 @@ build:
       # - python-mooncake-transfer-engine-rocm:main
       #
       # grpcio / grpcio-reflection: vLLM pins ==1.78.0, Fedora ships 1.48.4
-      #   (all branches). A jump this large is a substantial rebuild, and it is
-      #   tied to the protobuf bump below (grpcio 1.78 needs protobuf >=5).
+      #   (all branches). A jump this large is a substantial rebuild. It needs
+      #   protobuf >=5, now satisfied by the protobuf cluster ENABLED above.
       # - python-grpcio:main
       # - python-grpcio-reflection:main
       #
@@ -261,17 +281,13 @@ build:
       # - python-opentelemetry-exporter-otlp-proto-grpc:main
       # - python-opentelemetry-exporter-otlp:main
       #
-      # protobuf: vLLM needs >=5.29.6, but F44 ships 3.19.6. F45/rawhide has
-      #   6.33.5. Deferred only because nothing in the queue above needs it yet
-      #   (transformers touches protobuf solely via the optional
-      #   sentencepiece_model_pb2 module, skipped in %check); it is first needed
-      #   by grpcio and vLLM itself. Its ~38 F44 reverse-deps are IRRELEVANT --
+      # protobuf: NOW ENABLED above (protobuf:release-33 +
+      #   python-protobuf:release-6.33). Was deferred while nothing in the queue
+      #   needed python3-protobuf 6.x (transformers touches protobuf only via the
+      #   optional sentencepiece_model_pb2 module, skipped in %check); it is first
+      #   needed by grpcio and vLLM. Its ~38 F44 reverse-deps are IRRELEVANT --
       #   this is a private localrepo, so we never break unrelated F44 packages;
-      #   only vLLM's subtree resolves against our build. The only real cost is
-      #   protobuf's own build dep abseil-cpp (F44 20260107.1 vs F45 20260526.0,
-      #   same-year snapshots) -- worst case one extra abseil rebuild, not a
-      #   cascade. Clone rpms/protobuf, branch at 6.33.5.
-      # - protobuf:release-6.33
+      #   only vLLM's subtree resolves against our build.
       #
       # torch: NOW ENABLED above (python-torch:release-2.12). Was deferred as a
       #   very large native build; it is the compressed-tensors blocker
