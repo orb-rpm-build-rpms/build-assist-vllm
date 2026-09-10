@@ -161,10 +161,17 @@ build:
       - python-compressed-tensors:release-0.17   # vLLM pins compressed-tensors ==0.17.0 (latest 0.18.0)
       - python-mistral-common:main
 
-      # -- opentelemetry stack (exporter-otlp depends on sdk) --
-      - python-opentelemetry-semantic-conventions-ai:main
-      - python-opentelemetry-sdk:main
-      - python-opentelemetry-exporter-otlp:main
+      # -- opentelemetry stack. F44 ships only opentelemetry-api (1.39.1); the
+      #    sdk and semantic-conventions are separate srpms it lacks. The SDK pins
+      #    api and semantic-conventions to its exact version, so the whole stack
+      #    is aligned to the base api 1.39.1 (sdk 1.39.1 <-> semantic-conventions
+      #    0.60b1) to avoid rebuilding api. vLLM only needs >=1.27.0. Ordered
+      #    leaves-first: semantic-conventions -> sdk -> semantic-conventions-ai.
+      #    exporter-otlp is deferred to the grpcio cluster below (it pulls
+      #    opentelemetry-exporter-otlp-proto-grpc -> grpcio).
+      - python-opentelemetry-semantic-conventions:main      # 0.60b1; sdk pins ==0.60b1, semconv-ai needs >=0.59b0
+      - python-opentelemetry-sdk:main                       # 1.39.1 (matches base api)
+      - python-opentelemetry-semantic-conventions-ai:main   # 0.5.1; needs sdk>=1.38 + semconv>=0.59b0
 
       # -- newer than any Fedora branch ships --
       # mcp: need >=2.0.0,<3.0.0; Fedora (incl. rawhide) has only 1.27.1.
@@ -199,6 +206,16 @@ build:
       #   tied to the protobuf bump below (grpcio 1.78 needs protobuf >=5).
       # - python-grpcio:main
       # - python-grpcio-reflection:main
+      #
+      # opentelemetry-exporter-otlp (+ proto-grpc, proto-http): vLLM needs
+      #   exporter-otlp >=1.27.0 (common.txt). The meta package pulls
+      #   opentelemetry-exporter-otlp-proto-grpc, which requires grpcio, so it is
+      #   blocked on the grpcio/protobuf cluster above. Build at 1.39.1 to match
+      #   the opentelemetry stack (base api 1.39.1) once grpcio lands; the http
+      #   exporter (proto-http) needs only requests (in the base).
+      # - python-opentelemetry-exporter-otlp-proto-http:main
+      # - python-opentelemetry-exporter-otlp-proto-grpc:main
+      # - python-opentelemetry-exporter-otlp:main
       #
       # protobuf: vLLM needs >=5.29.6, but F44 ships 3.19.6. F45/rawhide has
       #   6.33.5. Deferred only because nothing in the queue above needs it yet
