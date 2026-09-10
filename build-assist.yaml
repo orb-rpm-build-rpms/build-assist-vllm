@@ -58,6 +58,14 @@ build:
       # huggingface_hub: need >=1.28.0; f45 has 1.27.0, rawhide has 1.30.0.
       - python-huggingface-hub:rawhide
 
+      # httpx2: mcp 2.1.1 needs httpx2 >=2.5.0; F44 ships 2.3.0. f45 has 2.12.0
+      # (exactly what vLLM's frozen test files pin). A single srpm produces BOTH
+      # python3-httpx2 and python3-httpcore2, so this one build also bumps
+      # httpcore2 (2.3.0 -> 2.12.0, which httpx2 2.12.0 pins exactly). Its other
+      # deps (h11 0.16, truststore 0.10.4, idna 3.18, anyio) are already in the
+      # base. Built before python-mcp.
+      - python-httpx2:f45
+
       # cpuinfo: torch 2.12 calls cpuinfo_has_x86_avx10_1()/_2(), added upstream
       # after F44's 24.09 snapshot; f45 ships 25.11 which has them. torch builds
       # with USE_SYSTEM_CPUINFO=ON, so the newer system library is needed (it
@@ -174,6 +182,11 @@ build:
       - python-opentelemetry-semantic-conventions-ai:main   # 0.5.1; needs sdk>=1.38 + semconv>=0.59b0
 
       # -- newer than any Fedora branch ships --
+      # mcp-types: mcp 2.x split its wire-protocol Pydantic models into a
+      #   separate distribution (mcp requires mcp-types==2.1.1). Not in Fedora;
+      #   generated with pyp2spec. Only needs pydantic/typing-extensions (base).
+      #   Built before python-mcp (leaves-first).
+      - python-mcp-types:main   # mcp 2.1.1 requires mcp-types ==2.1.1
       # mcp: need >=2.0.0,<3.0.0; Fedora (incl. rawhide) has only 1.27.1.
       - python-mcp:release-2.1   # vLLM pins mcp >=2.0.0,<3.0.0 (latest 2.2.0)
 
