@@ -23,7 +23,9 @@
 #   opentelemetry-api, datasets, pytest-asyncio, packaging, setuptools-rust,
 #   wheel, jinja2, cmake, amdsmi (ROCm), fastapi (0.136.3, in vLLM's <0.137)
 # Caveats for the vLLM .spec (base packages, but non-obvious names/versions):
-#   * opencv-python-headless -> depend on python3-opencv (4.13.0, provides cv2)
+#   * opencv-python-headless -> satisfied by the python-opencv-python-headless
+#                               name-bridge metapackage (below), which maps the
+#                               PyPI name onto python3-opencv (4.13.0, cv2)
 #   * setuptools <80 pin      -> use python3-setuptools80 (f44 default is 80.10.2)
 #
 # F44 base too OLD for vLLM -- these must be rebuilt from newer branches
@@ -103,6 +105,13 @@ build:
       - python-torch:release-2.12         # F44 has 2.9.1; compressed-tensors needs >=2.10.0 (vLLM pins ==2.12.0)
 
       # -- simple / few deps --
+      # opencv-python-headless: name-bridge metapackage. Fedora's python3-opencv
+      #   provides cv2 but advertises only python3dist(opencv), so PyPI-style
+      #   requirements on opencv-python-headless (mistral_common[image], vLLM)
+      #   don't resolve. This files-less package supplies that name and requires
+      #   python3-opencv -- fixes it once for all consumers, no per-spec patching.
+      #   Built before mistral-common (and vLLM), which need it.
+      - python-opencv-python-headless:main
       - python-partial-json-parser:main
       - python-pybase64:main
       - python-blake3:main
