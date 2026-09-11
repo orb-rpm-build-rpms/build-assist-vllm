@@ -17,16 +17,25 @@
 # Satisfied by the f44 base (no build needed), for reference:
 #   numpy, regex, cachetools, psutil, sentencepiece, requests, tqdm,
 #   py-cpuinfo, aiohttp, openai (2.24.0), pydantic (2.12.5), prometheus_client,
-#   pillow, tiktoken, lark (1.2.2), typing_extensions, filelock, jsonschema,
+#   pillow, tiktoken, lark (1.2.2), typing_extensions, jsonschema,
 #   pyzmq, msgspec, pyyaml, six, einops, cloudpickle, watchfiles,
-#   python-json-logger, ninja, cbor2, ijson, setproctitle, anthropic,
+#   python-json-logger, ninja, cbor2, ijson, setproctitle,
 #   opentelemetry-api, datasets, pytest-asyncio, packaging, setuptools-rust,
 #   wheel, jinja2, cmake, amdsmi (ROCm), fastapi (0.136.3, in vLLM's <0.137)
+# NOTE: filelock and anthropic were initially assumed base-satisfied but are not:
+#   F44 ships filelock 3.15.4 (vLLM needs >=3.16.1) and an anthropic too old for
+#   >=0.71.0. Both are rebuilt from rawhide in the dist-git group below.
 # Caveats for the vLLM .spec (base packages, but non-obvious names/versions):
 #   * opencv-python-headless -> satisfied by the python-opencv-python-headless
 #                               name-bridge metapackage (below), which maps the
 #                               PyPI name onto python3-opencv (4.13.0, cv2)
-#   * setuptools <80 pin      -> use python3-setuptools80 (f44 default is 80.10.2)
+#   * setuptools <80 pin      -> UNSATISFIABLE as written: rocm.txt caps
+#                               setuptools <80.0.0, but no Fedora package is
+#                               below 80 (even python3-setuptools80 is 80.10.2;
+#                               the base ships 80.10.2). The vLLM spec relaxes
+#                               that cap to <81.0.0 in %prep to match common.txt
+#                               (the real constraint), so the base setuptools
+#                               resolves. No separate package needed.
 #
 # F44 base too OLD for vLLM -- these must be rebuilt from newer branches
 # (added under the dist-git section below as they are prepared):
@@ -78,9 +87,15 @@ build:
       # python-torch (this dist-git group runs before the vllm-packages group).
       - cpuinfo:f45
 
-      # Build deps that were needed to build anthropic locally.
+      # filelock and anthropic are vLLM runtime deps (common.txt: filelock
+      # >=3.16.1, anthropic >=0.71.0) that F44 ships too old (filelock 3.15.4;
+      # anthropic below 0.71). Rebuilt from rawhide (filelock 3.20.3, anthropic
+      # 0.87.0). hatchling and jaraco-path are the newer build backends anthropic
+      # needs to build on F44 -- pure build deps, not shipped in the vLLM set.
       - python-hatchling:main
       - python-jaraco-path:main
+      - python-filelock:main
+      - python-anthropic:main
 
   # ---- Not packaged in Fedora (or Fedora's version is too old for any
   #      branch): build from freshly generated specs in vllm-packages.
@@ -252,6 +267,20 @@ build:
       - protobuf:release-33          # C++ libs + protobuf-devel/upb-static 6.33.5
       - python-protobuf:release-6.33   # python3-protobuf 6.33.5 (vLLM needs >=5.29.6)
 
+      # proto-plus: bumped 1.22.3 -> 1.26.1 (release-1.26; GitHub tag exists, so
+      #   the stock %forgesource machinery is kept -- only Version + sources
+      #   change). Reached transitively: vLLM's runai-model-streamer[gcs] pulls
+      #   google-cloud-storage -> google-api-core -> proto-plus. Every proto-plus
+      #   up to 1.26.0 caps protobuf at <5 (1.22.3) or <6 (1.24-1.26.0), which
+      #   collides with our protobuf 6.33.5; 1.26.1 is the first release with
+      #   "protobuf<7.0.0", so it is the only version that resolves. The F44 base
+      #   google-api-core (2.27.0, protobuf<7 and proto-plus>=1.25.0 on py3.13+)
+      #   and google-cloud-storage (2.14.0, its protobuf<5 cap is under an unused
+      #   extra) are already compatible, so proto-plus is the only rebuild needed
+      #   for the google/protobuf-6 conflict. Built after python-protobuf (its
+      #   %check imports proto-plus against the installed protobuf 6.x).
+      - python-proto-plus:release-1.26   # 1.22.3 -> 1.26.1 (protobuf<7; F44 caps <5)
+
       # grpc: monolithic srpm ported forward from Fedora's 1.48.4 to 1.78.0
       #   (release-1.78, branched from f45). vLLM/ROCm pins grpcio==1.78.0. This
       #   one srpm builds the C/C++ libraries AND every python3-grpcio* wheel
@@ -270,6 +299,21 @@ build:
       #   redo that bootstrap build before this line. Procedure recorded in the
       #   package's git log (release-1.75) and the project notes.
       - grpc:release-1.78              # grpcio 1.78.0 + C/C++ libs (vLLM pins ==1.78.0)
+
+      # libarrow: same-version REBUILD (23.0.1) against our grpc 1.78, cloned
+      #   from Fedora's f44 branch with the release lifted 1 -> 2 so it outranks
+      #   the base 23.0.1-1.fc44. The single libarrow srpm builds python3-pyarrow
+      #   and arrow-flight-libs. Reached transitively: vLLM's datasets (rocm.txt)
+      #   needs pyarrow>=21, and Fedora's python3-pyarrow links libarrow_flight,
+      #   which the stock build links against grpc 1.48.4 (libgrpc.so.26). That
+      #   grpc's grpc-data conflicts with the grpc 1.78.0 grpcio==1.78.0 pulls in,
+      #   so pyarrow and grpcio 1.78 cannot coexist until Arrow Flight is relinked
+      #   against grpc 1.78. This rebuild does exactly that. Built after grpc
+      #   (build-requires grpc-devel/grpc-plugins from grpc:release-1.78). If
+      #   Flight's C++ fails to compile against the newer grpc, the fallback is to
+      #   disable the use_flight bcond, but that drops flight-libs (acceptable for
+      #   datasets, which does not use pyarrow.flight).
+      - libarrow:f44                   # rebuild 23.0.1 vs grpc 1.78 (base links grpc 1.48)
 
       # googleapis-common-protos: bumped 1.63.0 -> 1.75.3 for protobuf 6.x
       #   (release-1.75; source from PyPI since GitHub tags stop at 1.66.0). Comes
@@ -298,18 +342,38 @@ build:
       - python-opentelemetry-exporter-otlp-proto-http:main    # 1.39.1; OTLP/HTTP (requests)
       - python-opentelemetry-exporter-otlp:main               # 1.39.1; meta (grpc + http)
 
+      # Temporary drop-in: python-runai-model-streamer-cheat repackages upstream's
+      # prebuilt PyPI wheels, producing the same package names (python3-runai-
+      # model-streamer + s3/gcs/azure backends and their extras). The real
+      # python-runai-model-streamer directory builds from source with Bazel, which
+      # is blocked on packaging Bazel and the AWS/Azure C++ SDKs for Fedora; swap
+      # the two entries once that native build works. Enable only ONE of them.
+      - python-runai-model-streamer:main
+
+      - python-amd-quark:main
+
+      # The ROCm vLLM build itself, last (it depends on everything above). Built
+      # from the upstream v0.29.0 git tag with a hand-written spec: VLLM_TARGET_
+      # DEVICE=rocm, HIP kernel compile of csrc, torch stripped from the pins via
+      # use_existing_torch.py. The only third-party source the ROCm path fetches
+      # (ROCm/triton's triton_kernels) is vendored as Source1 and pointed at with
+      # TRITON_KERNELS_SRC_DIR, so the build stays offline. %check is disabled
+      # (importing vllm needs a GPU).
+      - python-vllm:main
+
       # -- KNOWN BLOCKERS: left out until resolved --
       #
-      # runai-model-streamer, amd-quark, mooncake-transfer-engine-rocm:
-      #   wheel-only on PyPI (no sdist at the required version), so pyp2spec
-      #   cannot generate a source-buildable spec. Each needs a hand-written
-      #   spec built from its upstream git (type: git) instead:
-      #     runai-model-streamer      -> github.com/run-ai/runai-model-streamer
-      #     amd-quark (0.12.post1)    -> github.com/amd/quark  (sdist only for 0.1.0)
-      #     mooncake-transfer-engine  -> github.com/kvcache-ai/Mooncake (C++/RDMA)
-      # - python-runai-model-streamer:main
-      # - python-amd-quark:main
+      # mooncake-transfer-engine-rocm:
+      #   OPTIONAL feature (requirements/kv_connectors.txt, imported lazily) -- the
+      #   MooncakeConnector for KV-cache disaggregation. Not needed to build or run
+      #   core vLLM, so deferred. The PyPI wheel is CUDA-only, so no "cheat" is
+      #   possible; a real package means building github.com/kvcache-ai/Mooncake
+      #   (C++/RDMA transfer engine) from source for ROCm. No spec yet.
       # - python-mooncake-transfer-engine-rocm:main
+      #
+      # runai-model-streamer: now handled by python-runai-model-streamer-cheat
+      #   (enabled above). The from-source python-runai-model-streamer spec is
+      #   drafted but blocked on Bazel (see that directory).
       #
       # grpcio / grpcio-reflection: NOW ENABLED above as grpc:release-1.78.
       #   vLLM pins ==1.78.0; Fedora ships 1.48.4 on all branches, so the spec
