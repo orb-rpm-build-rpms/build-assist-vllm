@@ -252,6 +252,33 @@ build:
       - protobuf:release-33          # C++ libs + protobuf-devel/upb-static 6.33.5
       - python-protobuf:release-6.33   # python3-protobuf 6.33.5 (vLLM needs >=5.29.6)
 
+      # grpc: monolithic srpm ported forward from Fedora's 1.48.4 to 1.78.0
+      #   (release-1.78, branched from f45). vLLM/ROCm pins grpcio==1.78.0. This
+      #   one srpm builds the C/C++ libraries AND every python3-grpcio* wheel
+      #   (grpcio, grpcio-tools, grpcio-status, grpcio-channelz, grpcio-health-
+      #   checking, grpcio-reflection, grpcio-testing), so there is no separate
+      #   python-grpcio package to enable. Built after protobuf 6.x above.
+      #
+      #   NOTE: grpc build-requires python3-googleapis-common-protos (for
+      #   grpcio-status). F44 ships 1.63.0 capped at protobuf <6.0, which cannot
+      #   resolve against our protobuf 6.33.5, so it is rebuilt at 1.75.3 (see
+      #   below). But that rebuild is circular: its "grpc" extra build-requires
+      #   grpcio, which THIS package produces. The cycle is broken by a one-time
+      #   BOOTSTRAP build of googleapis-common-protos (mock --with bootstrap,
+      #   run by hand -- build-assist cannot pass rpmbuild --with) that must be
+      #   present in the localrepo before grpc builds. If the localrepo is wiped,
+      #   redo that bootstrap build before this line. Procedure recorded in the
+      #   package's git log (release-1.75) and the project notes.
+      - grpc:release-1.78              # grpcio 1.78.0 + C/C++ libs (vLLM pins ==1.78.0)
+
+      # googleapis-common-protos: bumped 1.63.0 -> 1.75.3 for protobuf 6.x
+      #   (release-1.75; source from PyPI since GitHub tags stop at 1.66.0). Comes
+      #   AFTER grpc on purpose: the normal (non-bootstrap) build pulls grpcio for
+      #   the "grpc" extra, so grpcio must already exist. This entry produces the
+      #   final non-bootstrap package (no ~bootstrap tag, +grpc subpackage built),
+      #   superseding the bootstrap artifact used to build grpc above.
+      - python-googleapis-common-protos:release-1.75  # protobuf 6.x; non-bootstrap rebuild
+
       # -- KNOWN BLOCKERS: left out until resolved --
       #
       # runai-model-streamer, amd-quark, mooncake-transfer-engine-rocm:
@@ -265,11 +292,11 @@ build:
       # - python-amd-quark:main
       # - python-mooncake-transfer-engine-rocm:main
       #
-      # grpcio / grpcio-reflection: vLLM pins ==1.78.0, Fedora ships 1.48.4
-      #   (all branches). A jump this large is a substantial rebuild. It needs
-      #   protobuf >=5, now satisfied by the protobuf cluster ENABLED above.
-      # - python-grpcio:main
-      # - python-grpcio-reflection:main
+      # grpcio / grpcio-reflection: NOW ENABLED above as grpc:release-1.78.
+      #   vLLM pins ==1.78.0; Fedora ships 1.48.4 on all branches, so the spec
+      #   was ported forward (a substantial rebuild: soversion bump, upb library
+      #   split, protobuf 6.x). The single grpc srpm produces every grpcio wheel,
+      #   so the earlier plan of separate python-grpcio* packages is dropped.
       #
       # opentelemetry-exporter-otlp (+ proto-grpc, proto-http): vLLM needs
       #   exporter-otlp >=1.27.0 (common.txt). The meta package pulls
