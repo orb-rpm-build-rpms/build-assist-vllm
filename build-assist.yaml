@@ -279,6 +279,25 @@ build:
       #   superseding the bootstrap artifact used to build grpc above.
       - python-googleapis-common-protos:release-1.75  # protobuf 6.x; non-bootstrap rebuild
 
+      # opentelemetry-exporter-otlp cluster: vLLM needs exporter-otlp >=1.27.0
+      #   (common.txt). pyp2spec defaults to the latest PyPI release (1.44.0), but
+      #   the whole stack is pinned to 1.39.1 to match the base api (1.44.0 would
+      #   require opentelemetry-sdk ~= 1.44, which the stack does not provide), so
+      #   these are generated with pyp2spec -v 1.39.1. Ordered leaves-first:
+      #     proto (protobuf messages; only needs protobuf 6.x above)
+      #       -> proto-common (shared encoding; needs proto)
+      #       -> proto-grpc  (gRPC transport; needs proto-common + grpcio 1.78)
+      #       -> proto-http  (HTTP transport; needs proto-common + requests[base])
+      #       -> exporter-otlp (meta; pulls proto-grpc + proto-http)
+      #   Comes after grpc/googleapis-common-protos because proto-grpc pulls
+      #   grpcio and googleapis-common-protos ~=1.57. The gcp-auth extra of the
+      #   grpc/http exporters is dropped (Google Cloud creds, not needed by vLLM).
+      - python-opentelemetry-proto:main                       # 1.39.1; protobuf messages
+      - python-opentelemetry-exporter-otlp-proto-common:main  # 1.39.1; shared encoding
+      - python-opentelemetry-exporter-otlp-proto-grpc:main    # 1.39.1; OTLP/gRPC (grpcio 1.78)
+      - python-opentelemetry-exporter-otlp-proto-http:main    # 1.39.1; OTLP/HTTP (requests)
+      - python-opentelemetry-exporter-otlp:main               # 1.39.1; meta (grpc + http)
+
       # -- KNOWN BLOCKERS: left out until resolved --
       #
       # runai-model-streamer, amd-quark, mooncake-transfer-engine-rocm:
@@ -298,15 +317,10 @@ build:
       #   split, protobuf 6.x). The single grpc srpm produces every grpcio wheel,
       #   so the earlier plan of separate python-grpcio* packages is dropped.
       #
-      # opentelemetry-exporter-otlp (+ proto-grpc, proto-http): vLLM needs
-      #   exporter-otlp >=1.27.0 (common.txt). The meta package pulls
-      #   opentelemetry-exporter-otlp-proto-grpc, which requires grpcio, so it is
-      #   blocked on the grpcio/protobuf cluster above. Build at 1.39.1 to match
-      #   the opentelemetry stack (base api 1.39.1) once grpcio lands; the http
-      #   exporter (proto-http) needs only requests (in the base).
-      # - python-opentelemetry-exporter-otlp-proto-http:main
-      # - python-opentelemetry-exporter-otlp-proto-grpc:main
-      # - python-opentelemetry-exporter-otlp:main
+      # opentelemetry-exporter-otlp (+ proto, proto-common, proto-grpc,
+      #   proto-http): NOW ENABLED above as the opentelemetry-exporter-otlp
+      #   cluster, once grpcio (grpc:release-1.78) and googleapis-common-protos
+      #   landed. Pinned to 1.39.1 to match the base opentelemetry-api.
       #
       # protobuf: NOW ENABLED above (protobuf:release-33 +
       #   python-protobuf:release-6.33). Was deferred while nothing in the queue
