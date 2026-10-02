@@ -95,6 +95,7 @@ build:
       - python-hatchling:main
       - python-jaraco-path:main
       - python-filelock:main
+      - python-httpx-aiohttp:main
       - python-anthropic:main
 
   # ---- Not packaged in Fedora (or Fedora's version is too old for any
@@ -102,7 +103,7 @@ build:
   #      Ordered leaves-first for dependency resolution. Specs still need to
   #      be created (pyp2spec) and committed before these will build. --------
   - type: dist-git
-    url: /home/gmessmer/git/vllm-build/vllm-packages/
+    url: https://github.com/orb-rpm-build-rpms/
     packages:
       # -- F44 base too old: rebuilt from a newer Fedora branch. These are
       #    Fedora dist-git packages cloned into vllm-packages and pinned to a
@@ -402,3 +403,10 @@ build:
       # fastapi: SATISFIED by the F44 base (0.136.3, within vLLM's
       #   >=0.133,<0.137). It was a blocker only on F45, which shipped 0.141.1
       #   (too new). No build needed on F44.
+
+install:
+  type: container
+  base_image: registry.fedoraproject.org/fedora:44
+  tag: vllm:latest
+  packages:
+    - python-vllm
